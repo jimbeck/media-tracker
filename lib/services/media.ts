@@ -46,8 +46,7 @@ async function fetchMyMediaEntries(
     .select(
       "status, rating, notes, started_at, completed_at, created_at, updated_at, media_items!inner(id, type, source, external_id, title, release_date, poster_url)",
     )
-    .eq("user_id", options.userId)
-    .returns<UserMediaRow[]>();
+    .eq("user_id", options.userId);
 
   if (options.typeFilter !== "all") {
     query = query.eq("media_items.type", options.typeFilter);
@@ -79,7 +78,7 @@ async function fetchMyMediaEntries(
       break;
   }
 
-  const { data } = await query;
+  const { data } = await query.returns<UserMediaRow[]>();
   return (
     data
       ?.map((row) => {
