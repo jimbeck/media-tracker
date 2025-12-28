@@ -21,11 +21,14 @@ export function SignUpForm({
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
   const [email, setEmail] = useState("");
+  const [handle, setHandle] = useState("");
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+
+  const handlePattern = /^[a-z0-9_]{3,24}$/;
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,15 +42,29 @@ export function SignUpForm({
       return;
     }
 
+    if (!handlePattern.test(handle)) {
+      setError("Handle must be 3-24 characters (lowercase, numbers, underscores).");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/protected`,
+          data: {
+            handle,
+          },
         },
       });
-      if (error) throw error;
+      if (error) {
+        if (error.message.toLowerCase().includes("handle already taken")) {
+          throw new Error("Handle is already taken.");
+        }
+        throw error;
+      }
       router.push("/auth/sign-up-success");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
@@ -76,6 +93,26 @@ export function SignUpForm({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="handle">Handle</Label>
+                <Input
+                  id="handle"
+                  type="text"
+                  placeholder="your_handle"
+                  required
+                  value={handle}
+                  onChange={(e) =>
+                    setHandle(
+                      e.target.value
+                        .toLowerCase()
+                        .replace(/[^a-z0-9_]/g, ""),
+                    )
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  This is your public username.
+                </p>
               </div>
               <div className="grid gap-2">
                 <div className="flex items-center">

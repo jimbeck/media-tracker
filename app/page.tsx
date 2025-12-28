@@ -1,58 +1,212 @@
-import { DeployButton } from "@/components/deploy-button";
-import { EnvVarWarning } from "@/components/env-var-warning";
-import { AuthButton } from "@/components/auth-button";
-import { Hero } from "@/components/hero";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { ConnectSupabaseSteps } from "@/components/tutorial/connect-supabase-steps";
-import { SignUpUserSteps } from "@/components/tutorial/sign-up-user-steps";
-import { hasEnvVars } from "@/lib/utils";
-import Link from "next/link";
 import { Suspense } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { searchCatalog, type CatalogItem, type MediaType } from "@/lib/catalog/search";
 
-export default function Home() {
+type MediaRow = CatalogItem;
+
+const mediaTypes = [
+  { value: "all", label: "All types" },
+  { value: "tv", label: "TV" },
+  { value: "movie", label: "Movies" },
+  { value: "game", label: "Games" },
+  { value: "book", label: "Books" },
+];
+
+async function MediaSearchContent({
+  searchParams,
+}: {
+  searchParams?: Promise<{ q?: string; type?: string }>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const query =
+    typeof resolvedSearchParams?.q === "string"
+      ? resolvedSearchParams.q.trim()
+      : "";
+  const typeFilter =
+    typeof resolvedSearchParams?.type === "string" ? resolvedSearchParams.type : "all";
+
+  let results: MediaRow[] = [];
+  let groupedResults: Map<MediaType, MediaRow[]> | null = null;
+
+  if (query.length > 0) {
+    const typesToFetch =
+      typeFilter === "all"
+        ? (["movie", "tv", "game", "book"] as const)
+        : ([typeFilter] as const);
+    const responses = await Promise.all(
+      typesToFetch.map(async (type) => {
+        try {
+          return (await searchCatalog(type as MediaType, query)) as MediaRow[];
+        } catch {
+          return [];
+        }
+      }),
+    );
+
+    results = responses.flat().slice(0, 24);
+    if (typeFilter === "all") {
+      groupedResults = new Map(
+        typesToFetch.map((type, index) => [type, responses[index] ?? []]),
+      );
+    }
+  }
+
+  const buildDetailHref = (item: MediaRow) =>
+    `/catalog/${item.type}/${item.source}/${encodeURIComponent(item.external_id)}`;
+
   return (
-    <main className="min-h-screen flex flex-col items-center">
-      <div className="flex-1 w-full flex flex-col gap-20 items-center">
-        <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16">
-          <div className="w-full max-w-5xl flex justify-between items-center p-3 px-5 text-sm">
-            <div className="flex gap-5 items-center font-semibold">
-              <Link href={"/"}>Next.js Supabase Starter</Link>
-              <div className="flex items-center gap-2">
-                <DeployButton />
-              </div>
-            </div>
-            {!hasEnvVars ? (
-              <EnvVarWarning />
-            ) : (
-              <Suspense>
-                <AuthButton />
-              </Suspense>
-            )}
-          </div>
-        </nav>
-        <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
-          <Hero />
-          <main className="flex-1 flex flex-col gap-6 px-4">
-            <h2 className="font-medium text-xl mb-4">Next steps</h2>
-            {hasEnvVars ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
-          </main>
-        </div>
-
-        <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-          <p>
-            Powered by{" "}
-            <a
-              href="https://supabase.com/?utm_source=create-next-app&utm_medium=template&utm_term=nextjs"
-              target="_blank"
-              className="font-bold hover:underline"
-              rel="noreferrer"
-            >
-              Supabase
-            </a>
-          </p>
-          <ThemeSwitcher />
-        </footer>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-semibold">Search your media</h1>
+        <p className="text-muted-foreground">
+          Find shows, movies, games, and books in your tracker.
+        </p>
       </div>
-    </main>
+
+      <form className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+        <Input
+          name="q"
+          placeholder="Search by title"
+          defaultValue={query}
+          aria-label="Search by title"
+        />
+        <select
+          name="type"
+          defaultValue={typeFilter}
+          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+        >
+          {mediaTypes.map((mediaType) => (
+            <option key={mediaType.value} value={mediaType.value}>
+              {mediaType.label}
+            </option>
+          ))}
+        </select>
+        <Button type="submit">Search</Button>
+      </form>
+
+      {query.length === 0 ? (
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            Start with a title, then filter by media type.
+          </CardContent>
+        </Card>
+      ) : results.length === 0 ? (
+        <Card>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            No results yet. Try a different search.
+          </CardContent>
+        </Card>
+      ) : typeFilter === "all" && groupedResults ? (
+        <div className="flex flex-col gap-6">
+          {mediaTypes
+            .filter((mediaType) => mediaType.value !== "all")
+            .map((mediaType) => {
+              const items =
+                groupedResults?.get(mediaType.value as MediaType) ?? [];
+              if (items.length === 0) {
+                return null;
+              }
+              return (
+                <section key={mediaType.value} className="flex flex-col gap-3">
+                  <h2 className="text-xl font-semibold">{mediaType.label}</h2>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {items.map((item) => (
+                      <Link
+                        key={`${item.source}-${item.external_id}`}
+                        href={buildDetailHref(item)}
+                        className="block"
+                      >
+                        <Card className="overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md">
+                          <div className="h-40 w-full bg-muted">
+                            {item.poster_url ? (
+                              <img
+                                src={item.poster_url}
+                                alt={`${item.title} poster`}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : null}
+                          </div>
+                          <CardContent className="flex flex-col gap-1 p-4">
+                            <p className="text-sm text-muted-foreground uppercase tracking-wide">
+                              {item.type}
+                              {item.release_date ? ` · ${item.release_date}` : ""}
+                            </p>
+                            <p className="text-base font-semibold">{item.title}</p>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {results.map((item) => (
+            <Link
+              key={`${item.source}-${item.external_id}`}
+              href={buildDetailHref(item)}
+              className="block"
+            >
+              <Card className="overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md">
+                <div className="h-40 w-full bg-muted">
+                  {item.poster_url ? (
+                    <img
+                      src={item.poster_url}
+                      alt={`${item.title} poster`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : null}
+                </div>
+                <CardContent className="flex flex-col gap-1 p-4">
+                  <p className="text-sm text-muted-foreground uppercase tracking-wide">
+                    {item.type}
+                    {item.release_date ? ` · ${item.release_date}` : ""}
+                  </p>
+                  <p className="text-base font-semibold">{item.title}</p>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MediaSearchFallback() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <div className="h-8 w-56 rounded bg-muted" />
+        <div className="h-4 w-80 rounded bg-muted" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
+        <div className="h-9 rounded bg-muted" />
+        <div className="h-9 rounded bg-muted" />
+        <div className="h-9 rounded bg-muted" />
+      </div>
+      <Card>
+        <CardContent className="p-6 text-sm text-muted-foreground">
+          Loading search...
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function Home({
+  searchParams,
+}: {
+  searchParams?: Promise<{ q?: string; type?: string }>;
+}) {
+  return (
+    <Suspense fallback={<MediaSearchFallback />}>
+      <MediaSearchContent searchParams={searchParams} />
+    </Suspense>
   );
 }
