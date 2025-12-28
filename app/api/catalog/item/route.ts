@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { getCatalogItem, isCatalogError, type CatalogSource } from "@/lib/catalog/item";
-import { type MediaType } from "@/lib/catalog/search";
+import {
+  getCatalogItem,
+  isCatalogError,
+  type CatalogSource,
+} from "@/lib/services/catalog/item";
+import { type MediaType } from "@/lib/services/catalog/search";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);

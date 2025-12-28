@@ -1,4 +1,4 @@
-import { type CatalogItem, type MediaType } from "@/lib/catalog/search";
+import { type CatalogItem, type MediaType } from "@/lib/services/catalog/search";
 
 export type CatalogSource = "tmdb" | "igdb" | "openlibrary" | "google_books";
 
@@ -18,7 +18,43 @@ function toDateString(value: string | number | null | undefined) {
   return String(value);
 }
 
-function normalizeTmdbItem(type: "movie" | "tv", item: any): CatalogItem {
+type TmdbItem = {
+  id?: number | string;
+  title?: string;
+  name?: string;
+  overview?: string | null;
+  release_date?: string | null;
+  first_air_date?: string | null;
+  poster_path?: string | null;
+};
+
+type IgdbItem = {
+  id?: number | string;
+  name?: string;
+  summary?: string | null;
+  first_release_date?: number | null;
+  cover?: { image_id?: string | null } | null;
+};
+
+type OpenLibraryWork = {
+  title?: string;
+  description?: string | { value?: string };
+  first_publish_date?: string | null;
+  covers?: number[];
+};
+
+type GoogleBooksItem = {
+  id?: string | number;
+  volumeInfo?: {
+    title?: string;
+    description?: string;
+    publishedDate?: string;
+    imageLinks?: { thumbnail?: string };
+  };
+};
+
+function normalizeTmdbItem(type: "movie" | "tv", result: unknown): CatalogItem {
+  const item = result as TmdbItem;
   return {
     type,
     source: "tmdb",
@@ -36,7 +72,8 @@ function igdbImageUrl(imageId?: string | null) {
   return `https://images.igdb.com/igdb/image/upload/t_cover_big/${imageId}.jpg`;
 }
 
-function normalizeIgdbItem(item: any): CatalogItem {
+function normalizeIgdbItem(result: unknown): CatalogItem {
+  const item = result as IgdbItem;
   return {
     type: "game",
     source: "igdb",
@@ -51,7 +88,8 @@ function normalizeIgdbItem(item: any): CatalogItem {
   };
 }
 
-function normalizeOpenLibraryItem(item: any, externalId: string): CatalogItem {
+function normalizeOpenLibraryItem(result: unknown, externalId: string): CatalogItem {
+  const item = result as OpenLibraryWork;
   const description =
     typeof item.description === "string"
       ? item.description
@@ -72,7 +110,8 @@ function normalizeOpenLibraryItem(item: any, externalId: string): CatalogItem {
   };
 }
 
-function normalizeGoogleBooksItem(item: any): CatalogItem {
+function normalizeGoogleBooksItem(result: unknown): CatalogItem {
+  const item = result as GoogleBooksItem;
   const info = item.volumeInfo ?? {};
   return {
     type: "book",
@@ -91,6 +130,7 @@ export async function getCatalogItem(
   source: CatalogSource,
   externalId: string,
 ) {
+  const decodedExternalId = decodeURIComponent(externalId);
   if (type === "movie" || type === "tv") {
     const tmdbKey = process.env.TMDB_API_KEY;
     if (!tmdbKey) {
@@ -99,8 +139,8 @@ export async function getCatalogItem(
 
     const endpoint =
       type === "movie"
-        ? `https://api.themoviedb.org/3/movie/${externalId}`
-        : `https://api.themoviedb.org/3/tv/${externalId}`;
+        ? `https://api.themoviedb.org/3/movie/${decodedExternalId}`
+        : `https://api.themoviedb.org/3/tv/${decodedExternalId}`;
 
     const response = await fetch(
       `${endpoint}?language=en-US&api_key=${tmdbKey}`,
@@ -111,7 +151,7 @@ export async function getCatalogItem(
       throw new CatalogError("TMDB item fetch failed", 502);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as unknown;
     return normalizeTmdbItem(type, data);
   }
 
@@ -146,7 +186,7 @@ export async function getCatalogItem(
         Authorization: `Bearer ${accessToken}`,
       },
       body: `fields id,name,summary,first_release_date,cover.image_id; where id = ${Number(
-        externalId,
+        decodedExternalId,
       )}; limit 1;`,
       next: { revalidate: 60 },
     });
@@ -155,20 +195,18 @@ export async function getCatalogItem(
       throw new CatalogError("IGDB item fetch failed", 502);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as unknown;
     const item = Array.isArray(data) ? data[0] : null;
     if (!item) {
       throw new CatalogError("IGDB item not found", 404);
     }
-
     return normalizeIgdbItem(item);
   }
 
   if (type === "book" && source === "openlibrary") {
-    const normalizedId = externalId.startsWith("/works/")
-      ? externalId
-      : `/works/${externalId}`;
-
+    const normalizedId = decodedExternalId.startsWith("/works/")
+      ? decodedExternalId
+      : `/works/${decodedExternalId}`;
     const response = await fetch(
       `https://openlibrary.org${normalizedId}.json`,
       { next: { revalidate: 60 } },
@@ -178,7 +216,8 @@ export async function getCatalogItem(
       throw new CatalogError("Open Library item fetch failed", 502);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as unknown;
+    console.log( `https://openlibrary.org${normalizedId}.json`);
     return normalizeOpenLibraryItem(data, normalizedId);
   }
 
@@ -189,7 +228,7 @@ export async function getCatalogItem(
     }
 
     const response = await fetch(
-      `https://www.googleapis.com/books/v1/volumes/${externalId}?key=${googleKey}`,
+      `https://www.googleapis.com/books/v1/volumes/${decodedExternalId}?key=${googleKey}`,
       { next: { revalidate: 60 } },
     );
 
@@ -197,7 +236,7 @@ export async function getCatalogItem(
       throw new CatalogError("Google Books item fetch failed", 502);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as unknown;
     return normalizeGoogleBooksItem(data);
   }
 

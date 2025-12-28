@@ -8,8 +8,8 @@ import {
   getCatalogItem,
   isCatalogError,
   type CatalogSource,
-} from "@/lib/catalog/item";
-import { type MediaType } from "@/lib/catalog/search";
+} from "@/lib/services/catalog/item";
+import { type MediaType } from "@/lib/services/catalog/search";
 
 type PageParams = {
   type: MediaType;

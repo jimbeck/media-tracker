@@ -5,9 +5,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { AuthButton } from "@/components/auth-button";
-import { EnvVarWarning } from "@/components/env-var-warning";
 import { ThemeSwitcher } from "@/components/theme-switcher";
-import { hasEnvVars } from "@/lib/utils";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -53,13 +51,9 @@ export default function RootLayout({
                       Friends
                     </Link>
                   </div>
-                  {!hasEnvVars ? (
-                    <EnvVarWarning />
-                  ) : (
-                    <Suspense>
-                      <AuthButton />
-                    </Suspense>
-                  )}
+                  <Suspense>
+                    <AuthButton />
+                  </Suspense>
                 </div>
               </nav>
               <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">

@@ -27,8 +27,50 @@ function toDateString(value: string | number | null | undefined) {
   return String(value);
 }
 
-function normalizeTmdbSearch(type: "movie" | "tv", results: any[]): CatalogItem[] {
-  return results.map((item) => ({
+type TmdbSearchItem = {
+  id?: number | string;
+  title?: string;
+  name?: string;
+  overview?: string | null;
+  release_date?: string | null;
+  first_air_date?: string | null;
+  poster_path?: string | null;
+};
+
+type IgdbSearchItem = {
+  id?: number | string;
+  name?: string;
+  summary?: string | null;
+  first_release_date?: number | null;
+  cover?: { image_id?: string | null } | null;
+};
+
+type OpenLibraryDoc = {
+  key?: string;
+  title?: string;
+  first_sentence?: string | { value?: string } | null;
+  first_publish_year?: string | number | null;
+  cover_i?: number | null;
+};
+
+type GoogleBooksItem = {
+  id?: string | number;
+  volumeInfo?: {
+    title?: string;
+    description?: string;
+    publishedDate?: string;
+    imageLinks?: { thumbnail?: string };
+  };
+};
+
+type TmdbSearchResponse = { results?: unknown[] };
+type OpenLibrarySearchResponse = { docs?: unknown[] };
+type GoogleBooksSearchResponse = { items?: unknown[] };
+
+function normalizeTmdbSearch(type: "movie" | "tv", results: unknown[]): CatalogItem[] {
+  return results.map((result) => {
+    const item = result as TmdbSearchItem;
+    return {
     type,
     source: "tmdb",
     external_id: String(item.id),
@@ -37,7 +79,8 @@ function normalizeTmdbSearch(type: "movie" | "tv", results: any[]): CatalogItem[
     release_date: toDateString(item.release_date ?? item.first_air_date),
     poster_url: item.poster_path ? `${TMDB_IMAGE_BASE}${item.poster_path}` : null,
     payload: item,
-  }));
+    };
+  });
 }
 
 function igdbImageUrl(imageId?: string | null) {
@@ -45,8 +88,10 @@ function igdbImageUrl(imageId?: string | null) {
   return `https://images.igdb.com/igdb/image/upload/t_cover_big/${imageId}.jpg`;
 }
 
-function normalizeIgdbSearch(results: any[]): CatalogItem[] {
-  return results.map((item) => ({
+function normalizeIgdbSearch(results: unknown[]): CatalogItem[] {
+  return results.map((result) => {
+    const item = result as IgdbSearchItem;
+    return {
     type: "game",
     source: "igdb",
     external_id: String(item.id),
@@ -57,26 +102,35 @@ function normalizeIgdbSearch(results: any[]): CatalogItem[] {
       : null,
     poster_url: igdbImageUrl(item.cover?.image_id),
     payload: item,
-  }));
+    };
+  });
 }
 
-function normalizeOpenLibrarySearch(results: any[]): CatalogItem[] {
-  return results.map((doc) => ({
+function normalizeOpenLibrarySearch(results: unknown[]): CatalogItem[] {
+  return results.map((result) => {
+    const doc = result as OpenLibraryDoc;
+    const firstSentence =
+      typeof doc.first_sentence === "string"
+        ? doc.first_sentence
+        : doc.first_sentence?.value ?? null;
+    return {
     type: "book",
     source: "openlibrary",
-    external_id: doc.key,
+    external_id: doc.key ?? "unknown",
     title: doc.title ?? "Untitled",
-    description: doc.first_sentence ?? null,
+    description: firstSentence,
     release_date: toDateString(doc.first_publish_year),
     poster_url: doc.cover_i
       ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`
       : null,
     payload: doc,
-  }));
+    };
+  });
 }
 
-function normalizeGoogleBooksSearch(items: any[]): CatalogItem[] {
-  return items.map((item) => {
+function normalizeGoogleBooksSearch(items: unknown[]): CatalogItem[] {
+  return items.map((result) => {
+    const item = result as GoogleBooksItem;
     const info = item.volumeInfo ?? {};
     return {
       type: "book",
@@ -112,7 +166,7 @@ export async function searchCatalog(type: MediaType, q: string) {
       throw new CatalogError("TMDB search failed", 502);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as TmdbSearchResponse;
     return normalizeTmdbSearch(type, data.results ?? []);
   }
 
@@ -154,8 +208,8 @@ export async function searchCatalog(type: MediaType, q: string) {
       throw new CatalogError("IGDB search failed", 502);
     }
 
-    const data = await response.json();
-    return normalizeIgdbSearch(data ?? []);
+    const data = (await response.json()) as unknown;
+    return normalizeIgdbSearch(Array.isArray(data) ? data : []);
   }
 
   const openLibraryResponse = await fetch(
@@ -167,7 +221,7 @@ export async function searchCatalog(type: MediaType, q: string) {
     throw new CatalogError("Open Library search failed", 502);
   }
 
-  const openLibraryData = await openLibraryResponse.json();
+  const openLibraryData = (await openLibraryResponse.json()) as OpenLibrarySearchResponse;
   let results = normalizeOpenLibrarySearch(openLibraryData.docs ?? []);
   const allowGoogleFallback =
     process.env.CATALOG_GOOGLE_BOOKS_FALLBACK === "true";
@@ -187,7 +241,7 @@ export async function searchCatalog(type: MediaType, q: string) {
       throw new CatalogError("Google Books search failed", 502);
     }
 
-    const googleData = await googleResponse.json();
+    const googleData = (await googleResponse.json()) as GoogleBooksSearchResponse;
     results = normalizeGoogleBooksSearch(googleData.items ?? []);
   }
 

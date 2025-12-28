@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { isCatalogError, searchCatalog, type MediaType } from "@/lib/catalog/search";
+import {
+  isCatalogError,
+  searchCatalog,
+  type MediaType,
+} from "@/lib/services/catalog/search";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
