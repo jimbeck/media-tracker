@@ -3,37 +3,8 @@ import { notFound } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 import { Suspense } from "react";
 
-import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-type Profile = {
-  id: string;
-  handle: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  discoverable: boolean;
-};
-
-type MediaItemSummary = {
-  title: string | null;
-  type: string | null;
-};
-
-type UserMediaRow = {
-  media_items: MediaItemSummary | MediaItemSummary[] | null;
-};
-
-function isRlsError(error: { code?: string; message?: string } | null) {
-  if (!error) {
-    return false;
-  }
-
-  return (
-    error.code === "42501" ||
-    error.message?.toLowerCase().includes("permission denied") ||
-    false
-  );
-}
+import { getProfilePageData } from "@/lib/services/profile";
 
 async function ProfileContent({
   params,
@@ -41,35 +12,21 @@ async function ProfileContent({
   params: Promise<{ handle: string }>;
 }) {
   noStore();
-  const supabase = await createClient();
   const resolvedParams = await params;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, handle, display_name, avatar_url, discoverable")
-    .eq("handle", resolvedParams.handle)
-    .maybeSingle<Profile>();
+  const {
+    profile,
+    privateData,
+    privateError,
+    privateRestricted,
+    mediaData,
+    mediaError,
+    mediaRestricted,
+  } = await getProfilePageData(resolvedParams.handle);
 
   if (!profile) {
     notFound();
   }
-
-  const { data: privateData, error: privateError } = await supabase
-    .from("profile_private")
-    .select("bio, website, location, favorite_types")
-    .eq("user_id", profile.id)
-    .maybeSingle();
-
-  const { data: mediaData, error: mediaError } = await supabase
-    .from("user_media")
-    .select("status, rating, is_favorite, media_items(title, type)")
-    .eq("user_id", profile.id)
-    .order("created_at", { ascending: false })
-    .limit(10)
-    .returns<UserMediaRow[]>();
-
-  const privateRestricted = isRlsError(privateError);
-  const mediaRestricted = isRlsError(mediaError);
   console.log(profile);
   return (
     <div className="flex w-full flex-col gap-6">

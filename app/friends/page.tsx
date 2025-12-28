@@ -2,29 +2,17 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense, type ReactNode } from "react";
 
-import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { getFriendsPageData } from "@/lib/services/friends";
+import { type FriendRow, type FriendsTab, type ProfileSummary } from "@/lib/types/friends";
 import {
   acceptFriendRequest,
   cancelFriendRequest,
   declineFriendRequest,
   sendFriendRequest,
 } from "./actions";
-
-type FriendRow = {
-  requester_id: string;
-  addressee_id: string;
-  status: "pending" | "accepted" | "blocked";
-};
-
-type ProfileSummary = {
-  id: string;
-  handle: string;
-  display_name: string | null;
-  avatar_url: string | null;
-};
 
 const tabs = [
   { id: "search", label: "Search" },
@@ -75,28 +63,27 @@ async function FriendsContent({
 }: {
   searchParams?: Promise<{ tab?: string; q?: string }>;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/auth/login");
-  }
-
   const resolvedSearchParams = await searchParams;
-  const tab = tabs.some((item) => item.id === resolvedSearchParams?.tab)
+  const tab = (tabs.some((item) => item.id === resolvedSearchParams?.tab)
     ? resolvedSearchParams?.tab
-    : "search";
+    : "search") as FriendsTab;
   const query =
     typeof resolvedSearchParams?.q === "string"
       ? resolvedSearchParams.q.trim()
       : "";
 
-  const { data: friendRows } = await supabase
-    .from("friendships")
-    .select("requester_id, addressee_id, status")
-    .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+  const {
+    user,
+    friendRows,
+    searchResults,
+    incomingRequests,
+    outgoingRequests,
+    acceptedFriends,
+  } = await getFriendsPageData(tab, query);
+
+  if (!user) {
+    redirect("/auth/login");
+  }
 
   const friendshipMap = new Map<string, FriendRow>();
   (friendRows ?? []).forEach((row) => {
@@ -104,77 +91,6 @@ async function FriendsContent({
       row.requester_id === user.id ? row.addressee_id : row.requester_id;
     friendshipMap.set(otherId, row);
   });
-
-  let searchResults: ProfileSummary[] = [];
-  if (tab === "search" && query.length > 0) {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, handle, display_name, avatar_url")
-      .or(`handle.ilike.%${query}%,display_name.ilike.%${query}%`)
-      .limit(20);
-
-    searchResults = (data ?? []).filter((profile) => profile.id !== user.id);
-  }
-
-  let incomingRequests: Array<FriendRow & { requester: ProfileSummary | null }> =
-    [];
-  let outgoingRequests: Array<FriendRow & { addressee: ProfileSummary | null }> =
-    [];
-
-  const normalizeProfile = (
-    value: ProfileSummary | ProfileSummary[] | null,
-  ): ProfileSummary | null => {
-    if (!value) return null;
-    return Array.isArray(value) ? value[0] ?? null : value;
-  };
-
-  if (tab === "requests") {
-    const { data: incoming } = await supabase
-      .from("friendships")
-      .select(
-        "requester_id, addressee_id, status, requester:profiles!friendships_requester_id_fkey(id, handle, display_name, avatar_url)",
-      )
-      .eq("addressee_id", user.id)
-      .eq("status", "pending");
-
-    const { data: outgoing } = await supabase
-      .from("friendships")
-      .select(
-        "requester_id, addressee_id, status, addressee:profiles!friendships_addressee_id_fkey(id, handle, display_name, avatar_url)",
-      )
-      .eq("requester_id", user.id)
-      .eq("status", "pending");
-
-    incomingRequests =
-      incoming?.map((row) => ({
-        ...row,
-        requester: normalizeProfile(row.requester),
-      })) ?? [];
-    outgoingRequests =
-      outgoing?.map((row) => ({
-        ...row,
-        addressee: normalizeProfile(row.addressee),
-      })) ?? [];
-  }
-
-  let acceptedFriends: ProfileSummary[] = [];
-
-  if (tab === "friends") {
-    const { data } = await supabase
-      .from("friendships")
-      .select(
-        "requester_id, addressee_id, status, requester:profiles!friendships_requester_id_fkey(id, handle, display_name, avatar_url), addressee:profiles!friendships_addressee_id_fkey(id, handle, display_name, avatar_url)",
-      )
-      .eq("status", "accepted")
-      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
-
-    acceptedFriends =
-      data?.map((row) => {
-        const friend =
-          row.requester_id === user.id ? row.addressee : row.requester;
-        return normalizeProfile(friend);
-      }).filter((friend): friend is ProfileSummary => friend !== null) ?? [];
-  }
 
   return (
     <div className="flex w-full flex-col gap-6">
