@@ -45,6 +45,12 @@ export default function RootLayout({
                   <div className="flex gap-5 items-center font-semibold">
                     <Link href={"/"}>Media Tracker</Link>
                     <Link
+                      href="/my-media"
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      My Media
+                    </Link>
+                    <Link
                       href="/friends"
                       className="text-muted-foreground hover:text-foreground"
                     >

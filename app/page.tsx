@@ -1,13 +1,18 @@
 import { Suspense } from "react";
+import { unstable_noStore as noStore } from "next/cache";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { MediaStatusControl } from "@/components/media/status-control";
 import {
   searchCatalog,
   type CatalogItem,
   type MediaType,
 } from "@/lib/services/catalog/search";
+import { getCurrentUser } from "@/lib/services/auth";
+import { getCatalogStatusMap } from "@/lib/services/media";
+import { type MediaStatus } from "@/lib/types/media";
 
 type MediaRow = CatalogItem;
 
@@ -24,6 +29,8 @@ async function MediaSearchContent({
 }: {
   searchParams?: Promise<{ q?: string; type?: string }>;
 }) {
+  noStore();
+  const user = await getCurrentUser();
   const resolvedSearchParams = await searchParams;
   const query =
     typeof resolvedSearchParams?.q === "string"
@@ -34,6 +41,7 @@ async function MediaSearchContent({
 
   let results: MediaRow[] = [];
   let groupedResults: Map<MediaType, MediaRow[]> | null = null;
+  let statusMap = new Map<string, MediaStatus | null>();
 
   if (query.length > 0) {
     const typesToFetch: MediaType[] =
@@ -56,6 +64,14 @@ async function MediaSearchContent({
         typesToFetch.map((type, index) => [type, responses[index] ?? []]),
       );
     }
+  }
+
+  if (user && query.length > 0) {
+    const displayedItems =
+      typeFilter === "all" && groupedResults
+        ? Array.from(groupedResults.values()).flat()
+        : results;
+    statusMap = await getCatalogStatusMap(user.id, displayedItems);
   }
 
   const buildDetailHref = (item: MediaRow) =>
@@ -118,12 +134,11 @@ async function MediaSearchContent({
                   <h2 className="text-xl font-semibold">{mediaType.label}</h2>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {items.map((item) => (
-                      <Link
+                      <Card
                         key={`${item.source}-${item.external_id}`}
-                        href={buildDetailHref(item)}
-                        className="block"
+                        className="overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md"
                       >
-                        <Card className="overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md">
+                        <Link href={buildDetailHref(item)} className="block">
                           <div className="h-40 w-full bg-muted">
                             {item.poster_url ? (
                               <img
@@ -133,15 +148,30 @@ async function MediaSearchContent({
                               />
                             ) : null}
                           </div>
-                          <CardContent className="flex flex-col gap-1 p-4">
-                            <p className="text-sm text-muted-foreground uppercase tracking-wide">
-                              {item.type}
-                              {item.release_date ? ` · ${item.release_date}` : ""}
-                            </p>
-                            <p className="text-base font-semibold">{item.title}</p>
-                          </CardContent>
-                        </Card>
-                      </Link>
+                        </Link>
+                        <CardContent className="flex flex-col gap-1 p-4">
+                          <p className="text-sm text-muted-foreground uppercase tracking-wide">
+                            {item.type}
+                            {item.release_date ? ` · ${item.release_date}` : ""}
+                          </p>
+                          <Link
+                            href={buildDetailHref(item)}
+                            className="text-base font-semibold hover:underline"
+                          >
+                            {item.title}
+                          </Link>
+                            {user ? (
+                              <MediaStatusControl
+                                catalogItem={item}
+                                currentStatus={
+                                  statusMap.get(`${item.source}:${item.external_id}`) ??
+                                  null
+                                }
+                                revalidatePath="/"
+                              />
+                            ) : null}
+                        </CardContent>
+                      </Card>
                     ))}
                   </div>
                 </section>
@@ -151,12 +181,11 @@ async function MediaSearchContent({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {results.map((item) => (
-            <Link
+            <Card
               key={`${item.source}-${item.external_id}`}
-              href={buildDetailHref(item)}
-              className="block"
+              className="overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md"
             >
-              <Card className="overflow-hidden transition hover:-translate-y-0.5 hover:shadow-md">
+              <Link href={buildDetailHref(item)} className="block">
                 <div className="h-40 w-full bg-muted">
                   {item.poster_url ? (
                     <img
@@ -166,15 +195,29 @@ async function MediaSearchContent({
                     />
                   ) : null}
                 </div>
-                <CardContent className="flex flex-col gap-1 p-4">
-                  <p className="text-sm text-muted-foreground uppercase tracking-wide">
-                    {item.type}
-                    {item.release_date ? ` · ${item.release_date}` : ""}
-                  </p>
-                  <p className="text-base font-semibold">{item.title}</p>
-                </CardContent>
-              </Card>
-            </Link>
+              </Link>
+              <CardContent className="flex flex-col gap-1 p-4">
+                <p className="text-sm text-muted-foreground uppercase tracking-wide">
+                  {item.type}
+                  {item.release_date ? ` · ${item.release_date}` : ""}
+                </p>
+                <Link
+                  href={buildDetailHref(item)}
+                  className="text-base font-semibold hover:underline"
+                >
+                  {item.title}
+                </Link>
+                {user ? (
+                  <MediaStatusControl
+                    catalogItem={item}
+                    currentStatus={
+                      statusMap.get(`${item.source}:${item.external_id}`) ?? null
+                    }
+                    revalidatePath="/"
+                  />
+                ) : null}
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
