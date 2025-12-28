@@ -217,7 +217,6 @@ export async function getCatalogItem(
     }
 
     const data = (await response.json()) as unknown;
-    console.log( `https://openlibrary.org${normalizedId}.json`);
     return normalizeOpenLibraryItem(data, normalizedId);
   }
 
