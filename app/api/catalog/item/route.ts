@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCatalogItem, isCatalogError } from "@/lib/catalog/item";
+import { getCatalogItem, isCatalogError, type CatalogSource } from "@/lib/catalog/item";
 import { type MediaType } from "@/lib/catalog/search";
 
 export async function GET(request: Request) {
@@ -8,7 +8,12 @@ export async function GET(request: Request) {
   const source = url.searchParams.get("source");
   const externalId = url.searchParams.get("external_id");
 
-  if (!type || !source || !externalId) {
+  const isValidSource = (value: string | null): value is CatalogSource => {
+    if (!value) return false;
+    return ["tmdb", "igdb", "openlibrary", "google_books"].includes(value);
+  };
+
+  if (!type || !isValidSource(source) || !externalId) {
     return NextResponse.json(
       { error: "Missing required query params: type, source, external_id" },
       { status: 400 },
