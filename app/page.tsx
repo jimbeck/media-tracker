@@ -32,10 +32,10 @@ async function MediaSearchContent({
   let groupedResults: Map<MediaType, MediaRow[]> | null = null;
 
   if (query.length > 0) {
-    const typesToFetch =
+    const typesToFetch: MediaType[] =
       typeFilter === "all"
-        ? (["movie", "tv", "game", "book"] as const)
-        : ([typeFilter] as const);
+        ? ["movie", "tv", "game", "book"]
+        : [typeFilter as MediaType];
     const responses = await Promise.all(
       typesToFetch.map(async (type) => {
         try {
@@ -48,7 +48,7 @@ async function MediaSearchContent({
 
     results = responses.flat().slice(0, 24);
     if (typeFilter === "all") {
-      groupedResults = new Map(
+      groupedResults = new Map<MediaType, MediaRow[]>(
         typesToFetch.map((type, index) => [type, responses[index] ?? []]),
       );
     }

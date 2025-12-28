@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ function ProfileCard({
   actions,
 }: {
   profile: ProfileSummary;
-  actions?: React.ReactNode;
+  actions?: ReactNode;
 }) {
   return (
     <Card>
@@ -121,6 +121,13 @@ async function FriendsContent({
   let outgoingRequests: Array<FriendRow & { addressee: ProfileSummary | null }> =
     [];
 
+  const normalizeProfile = (
+    value: ProfileSummary | ProfileSummary[] | null,
+  ): ProfileSummary | null => {
+    if (!value) return null;
+    return Array.isArray(value) ? value[0] ?? null : value;
+  };
+
   if (tab === "requests") {
     const { data: incoming } = await supabase
       .from("friendships")
@@ -138,8 +145,16 @@ async function FriendsContent({
       .eq("requester_id", user.id)
       .eq("status", "pending");
 
-    incomingRequests = incoming ?? [];
-    outgoingRequests = outgoing ?? [];
+    incomingRequests =
+      incoming?.map((row) => ({
+        ...row,
+        requester: normalizeProfile(row.requester),
+      })) ?? [];
+    outgoingRequests =
+      outgoing?.map((row) => ({
+        ...row,
+        addressee: normalizeProfile(row.addressee),
+      })) ?? [];
   }
 
   let acceptedFriends: ProfileSummary[] = [];
@@ -157,8 +172,8 @@ async function FriendsContent({
       data?.map((row) => {
         const friend =
           row.requester_id === user.id ? row.addressee : row.requester;
-        return friend as ProfileSummary;
-      }) ?? [];
+        return normalizeProfile(friend);
+      }).filter((friend): friend is ProfileSummary => friend !== null) ?? [];
   }
 
   return (

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { unstable_noStore as noStore } from "next/cache";
+import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -15,11 +17,8 @@ type PageParams = {
   externalId: string;
 };
 
-export default async function CatalogItemPage({
-  params,
-}: {
-  params: Promise<PageParams>;
-}) {
+async function CatalogItemContent({ params }: { params: Promise<PageParams> }) {
+  noStore();
   const { type, source, externalId } = await params;
 
   try {
@@ -75,5 +74,27 @@ export default async function CatalogItemPage({
         Unable to load this item right now.
       </CardContent>
     </Card>
+  );
+}
+
+function CatalogItemFallback() {
+  return (
+    <Card>
+      <CardContent className="p-6 text-sm text-muted-foreground">
+        Loading item...
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function CatalogItemPage({
+  params,
+}: {
+  params: Promise<PageParams>;
+}) {
+  return (
+    <Suspense fallback={<CatalogItemFallback />}>
+      <CatalogItemContent params={params} />
+    </Suspense>
   );
 }

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { unstable_noStore as noStore } from "next/cache";
+import { Suspense } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +12,15 @@ type Profile = {
   display_name: string | null;
   avatar_url: string | null;
   discoverable: boolean;
+};
+
+type MediaItemSummary = {
+  title: string | null;
+  type: string | null;
+};
+
+type UserMediaRow = {
+  media_items: MediaItemSummary | MediaItemSummary[] | null;
 };
 
 function isRlsError(error: { code?: string; message?: string } | null) {
@@ -24,11 +35,12 @@ function isRlsError(error: { code?: string; message?: string } | null) {
   );
 }
 
-export default async function ProfilePage({
+async function ProfileContent({
   params,
 }: {
   params: Promise<{ handle: string }>;
 }) {
+  noStore();
   const supabase = await createClient();
   const resolvedParams = await params;
 
@@ -53,7 +65,8 @@ export default async function ProfilePage({
     .select("status, rating, is_favorite, media_items(title, type)")
     .eq("user_id", profile.id)
     .order("created_at", { ascending: false })
-    .limit(10);
+    .limit(10)
+    .returns<UserMediaRow[]>();
 
   const privateRestricted = isRlsError(privateError);
   const mediaRestricted = isRlsError(mediaError);
@@ -125,16 +138,19 @@ export default async function ProfilePage({
             <p>Unable to load media list.</p>
           ) : mediaData && mediaData.length > 0 ? (
             <ul className="space-y-2">
-              {mediaData.map((item, index) => (
-                <li key={`${item.media_items?.title ?? "item"}-${index}`}>
-                  <span className="font-medium text-foreground">
-                    {item.media_items?.title ?? "Untitled"}
-                  </span>{" "}
-                  <span>
-                    {item.media_items?.type ? `(${item.media_items.type})` : ""}
-                  </span>
-                </li>
-              ))}
+              {mediaData.map((item, index) => {
+                const mediaItem = Array.isArray(item.media_items)
+                  ? item.media_items[0] ?? null
+                  : item.media_items;
+                return (
+                  <li key={`${mediaItem?.title ?? "item"}-${index}`}>
+                    <span className="font-medium text-foreground">
+                      {mediaItem?.title ?? "Untitled"}
+                    </span>{" "}
+                    <span>{mediaItem?.type ? `(${mediaItem.type})` : ""}</span>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p>No media updates yet.</p>
@@ -142,5 +158,27 @@ export default async function ProfilePage({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function ProfileFallback() {
+  return (
+    <Card>
+      <CardContent className="p-6 text-sm text-muted-foreground">
+        Loading profile...
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function ProfilePage({
+  params,
+}: {
+  params: Promise<{ handle: string }>;
+}) {
+  return (
+    <Suspense fallback={<ProfileFallback />}>
+      <ProfileContent params={params} />
+    </Suspense>
   );
 }
